@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
 import Icon from '@/components/ui/icon';
 
 // Mock data for auction cars
@@ -63,10 +64,12 @@ const formatTime = (seconds: number) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-const CarCard = ({ car }: { car: typeof auctionCars[0] }) => {
+const CarCard = ({ car, onNewBid }: { car: typeof auctionCars[0], onNewBid: (carId: number, bidAmount: number, bidder: string) => void }) => {
   const [timeLeft, setTimeLeft] = useState(car.timeLeft);
   const [currentBid, setCurrentBid] = useState(car.currentBid);
   const [bidCount, setBidCount] = useState(car.bids);
+  const [isHighlighted, setIsHighlighted] = useState(false);
+  const [isHighlighted, setIsHighlighted] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -76,12 +79,46 @@ const CarCard = ({ car }: { car: typeof auctionCars[0] }) => {
   }, []);
 
   const handleBid = () => {
-    setCurrentBid(prev => prev + 500000);
+    const newBidAmount = currentBid + 500000;
+    setCurrentBid(newBidAmount);
     setBidCount(prev => prev + 1);
+    
+    // Уведомить родительский компонент о новой ставке
+    onNewBid(car.id, newBidAmount, '사용자123');
+    
+    // Подсветить карточку на 2 секунды
+    setIsHighlighted(true);
+    setTimeout(() => setIsHighlighted(false), 2000);
   };
+  
+  // Симуляция входящих ставок от других пользователей
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const randomBidInterval = setInterval(() => {
+        // Случайные ставки каждые 8-15 секунд
+        if (Math.random() < 0.3) {
+          const bidAmount = currentBid + 500000;
+          setCurrentBid(bidAmount);
+          setBidCount(prev => prev + 1);
+          
+          const randomBidders = ['김현대', '박기아', '이제네시스', '최경매', '송자동차'];
+          const randomBidder = randomBidders[Math.floor(Math.random() * randomBidders.length)];
+          
+          onNewBid(car.id, bidAmount, randomBidder);
+          
+          setIsHighlighted(true);
+          setTimeout(() => setIsHighlighted(false), 2000);
+        }
+      }, Math.random() * 7000 + 8000);
+      
+      return () => clearInterval(randomBidInterval);
+    }
+  }, [timeLeft, currentBid, car.id, onNewBid]);
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 group">
+    <Card className={`overflow-hidden hover:shadow-lg transition-all duration-300 group ${
+      isHighlighted ? 'ring-2 ring-auction-blue shadow-lg shadow-auction-blue/20 animate-pulse' : ''
+    }`}>
       <div className="relative">
         <img 
           src={car.image} 
@@ -152,6 +189,30 @@ const CarCard = ({ car }: { car: typeof auctionCars[0] }) => {
 export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
+  const { toast } = useToast();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Создаём звуковое уведомление
+  useEffect(() => {
+    audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp7KRVFAhGn+TyvmAaBTWG0fPTgjEGJXfH8N2QQAoUXrTp7KVUFQJH');
+  }, []);
+
+  const handleNewBid = useCallback((carId: number, bidAmount: number, bidder: string) => {
+    // Показать Toast уведомление
+    toast({
+      title: "🔥 Новая ставка!",
+      description: `${bidder} сделал ставку ${formatPrice(bidAmount)} на лот #${carId}`,
+      duration: 4000,
+    });
+
+    // Воспроизвести звуковое уведомление
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {
+        // Игнорируем ошибки автовоспроизведения
+      });
+    }
+  }, [toast]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -245,7 +306,7 @@ export default function Index() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {auctionCars.map(car => (
-              <CarCard key={car.id} car={car} />
+              <CarCard key={car.id} car={car} onNewBid={handleNewBid} />
             ))}
           </div>
         </div>
